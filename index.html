@@ -2,46 +2,65 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>GitHub完結型AIチャット</title>
+    <title>安定版 AIチャット</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; }
-        #output { background: #f0f0f0; padding: 10px; min-height: 100px; margin-top: 10px; border-radius: 5px; white-space: pre-wrap; }
-        textarea { width: 100%; height: 80px; }
+        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #202123; color: white; }
+        #output { background: #343541; padding: 15px; min-height: 150px; margin: 10px 0; border-radius: 8px; white-space: pre-wrap; border: 1px solid #555; }
+        textarea { width: 100%; height: 80px; background: #40414f; color: white; border: 1px solid #555; border-radius: 5px; padding: 10px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #10a37f; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        button:disabled { background: #555; cursor: not-allowed; }
     </style>
 </head>
 <body>
-    <h1>マイAIチャット (Local LLM)</h1>
-    <p>※初回はAIモデル(約1GB)のダウンロードに数分かかります。</p>
-    <textarea id="input" placeholder="ここにメッセージを入力..."></textarea>
-    <button id="sendBtn">送信</button>
-    <div id="output">AIの準備を待っています...</div>
+    <h1>My Local AI</h1>
+    <div id="output">モデルを読み込んでいます（1〜3分）...</div>
+    <textarea id="input" placeholder="質問を入力してください..."></textarea>
+    <button id="sendBtn" disabled>準備中...</button>
 
     <script type="module">
-        // Transformers.jsライブラリを使ってブラウザでAIを動かす
         import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.1';
 
         let generator;
         const outputDiv = document.getElementById('output');
+        const sendBtn = document.getElementById('sendBtn');
+        const inputField = document.getElementById('input');
 
         async function init() {
             try {
-                // 日本語対応の軽量モデルをロード
-                generator = await pipeline('text-generation', 'onnx-community/Qwen2.5-0.5B-Instruct');
-                outputDiv.innerText = "準備完了！質問をどうぞ。";
+                // モデルをQwenよりさらに軽量な「Llama-3.2-1B」の軽量版に変更（安定性を優先）
+                generator = await pipeline('text-generation', 'onnx-community/Llama-3.2-1B-Instruct-q4f16', {
+                    device: 'wasm' // WebGPUではなく安定したWASMモードを指定
+                });
+                outputDiv.innerText = "準備完了！メッセージを送ってください。";
+                sendBtn.innerText = "送信";
+                sendBtn.disabled = false;
             } catch (e) {
-                outputDiv.innerText = "エラーが発生しました: " + e.message;
+                outputDiv.innerText = "エラー: " + e.message;
             }
         }
 
-        document.getElementById('sendBtn').onclick = async () => {
-            const text = document.getElementById('input').value;
-            if (!text || !generator) return;
-            
-            outputDiv.innerText = "思考中...";
-            const messages = [{ role: "user", content: text }];
-            
-            const output = await generator(messages, { max_new_tokens: 128 });
-            outputDiv.innerText = output[0].generated_text.at(-1).content;
+        sendBtn.onclick = async () => {
+            const text = inputField.value;
+            if (!text || sendBtn.disabled) return;
+
+            // 送信ボタンを無効化してエラーを防ぐ
+            sendBtn.disabled = true;
+            sendBtn.innerText = "思考中...";
+            outputDiv.innerText = "AIが考えています...\n（初回回答は1分ほどかかる場合があります）";
+
+            try {
+                const messages = [{ role: "user", content: text }];
+                const output = await generator(messages, { max_new_tokens: 128 });
+                
+                outputDiv.innerText = output[0].generated_text.at(-1).content;
+            } catch (err) {
+                outputDiv.innerText = "エラーが発生しました: " + err.message;
+                console.error(err);
+            } finally {
+                // 終わったらボタンを元に戻す
+                sendBtn.disabled = false;
+                sendBtn.innerText = "送信";
+            }
         };
 
         init();
